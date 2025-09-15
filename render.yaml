@@ -7,7 +7,7 @@ services:
     name: paddlocr-crosstab
     env: docker
     # Render will use your docker-compose.yml. Update the command if your service name differs.
-    dockerComposeCommand: docker-compose up --build -d invoice-extraction
+    dockerComposeCommand: docker-compose up --build invoice-extraction
     envVars:
       - fromGroup: app-secrets
 
