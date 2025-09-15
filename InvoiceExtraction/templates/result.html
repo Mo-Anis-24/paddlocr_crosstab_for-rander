@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OCR Result</title>
+    <style>
+      :root { --border:#e5e7eb; --muted:#6b7280; --bg:#f9fafb; --primary:#111827; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; margin: 2rem; background: white; }
+      .card { max-width: 1000px; margin: 0 auto; padding: 1.5rem; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+      h1 { margin-top: 0; font-size: 1.7rem; }
+      .toolbar { display: flex; gap: .5rem; align-items: center; margin-bottom: .75rem; }
+      .toolbar button, .toolbar a { background: var(--primary); color: white; border: none; padding: .5rem .8rem; border-radius: 8px; cursor: pointer; text-decoration: none; }
+      .toolbar .secondary { background: #6b7280; }
+      pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); padding: 1rem; border-radius: 6px; max-height: 70vh; overflow: auto; }
+      a.back { text-decoration: none; color: #111827; }
+      .muted { color: var(--muted); font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Extracted text</h1>
+      <div class="toolbar">
+        <button id="copyBtn" type="button">Copy</button>
+        <a id="downloadBtn" class="secondary" href="#" download="ocr.txt">Download Text</a>
+        {% if text_file_url %}
+          <a class="secondary" href="{{ text_file_url }}">Download .txt</a>
+        {% endif %}
+        {% if zip_url %}
+          <a class="secondary" href="{{ zip_url }}">Download Visualizations (ZIP)</a>
+        {% endif %}
+        <form id="excelForm" action="/extract-excel" method="post" style="margin-left:.5rem; display:inline-flex; gap:.4rem; align-items:center;">
+          <input type="hidden" name="pages_json" id="pagesJsonHidden" value="{{ pages_json }}">
+          <button type="submit" style="background:#059669;">Generate Excel</button>
+        </form>
+        <span class="muted" id="charCount"></span>
+        <span style="flex:1"></span>
+        <a class="back" href="/">&#8592; Go back</a>
+      </div>
+      {% if items %}
+        <h2 style="margin:.5rem 0 .25rem 0;">Detected Text Regions ({{ items|length }} found)</h2>
+        <div style="border:1px solid var(--border); border-radius:8px; padding:.75rem; background:var(--bg); max-height:40vh; overflow:auto;">
+          <ol style="margin:0; padding-left:1.25rem;">
+            {% for item in items %}
+              <li style="margin-bottom:.4rem; padding:.25rem; border-radius:4px; {% if item.score > 0.8 %}background:#f0f9ff;{% elif item.score > 0.6 %}background:#fefce8;{% else %}background:#fef2f2;{% endif %}">
+                <div><strong>{{ item.text }}</strong></div>
+                <div class="muted">
+                  Confidence: {{ '%.3f'|format(item.score) }} 
+                  {% if item.score > 0.8 %}<span style="color:#059669;">✓ High</span>{% elif item.score > 0.6 %}<span style="color:#d97706;">⚠ Medium</span>{% else %}<span style="color:#dc2626;">⚠ Low</span>{% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+      {% endif %}
+
+      <h2 style="margin-top:1rem;">All Extracted Text</h2>
+      <div class="muted" style="margin-bottom:.5rem;">
+        Total pages processed: {{ num_pages }} | Text lines found: {{ num_lines }}
+      </div>
+      <pre id="content">{{ text }}</pre>
+      {% if previews %}
+        <h2 style="margin-top:1.25rem;">OCR Visualizations - How PaddleOCR Detected Text</h2>
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+          <h3 style="margin-top:0; font-size:1.1rem;">How PaddleOCR Works:</h3>
+          <ol style="margin:.5rem 0; padding-left:1.5rem;">
+            <li><strong>Text Detection:</strong> PaddleOCR first identifies regions in the image that contain text using advanced deep learning models</li>
+            <li><strong>Text Recognition:</strong> Each detected text region is then processed to recognize and extract the actual text content</li>
+            <li><strong>Confidence Scoring:</strong> Each text detection gets a confidence score (0-1) indicating how certain the model is about the recognition</li>
+            <li><strong>Visualization:</strong> The green boxes in the images below show exactly where text was detected, with the recognized text overlaid</li>
+          </ol>
+        </div>
+        <p class="muted" style="margin-bottom:1rem;">These images show how PaddleOCR detected and extracted text from your document. Green boxes highlight detected text regions with confidence scores.</p>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+          {% for img in previews %}
+            <div style="border:1px solid var(--border); border-radius:8px; padding:.5rem; background:white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <a href="/outputs/{{ img }}" target="_blank" style="text-decoration:none; color:inherit;">
+                <img src="/outputs/{{ img }}" alt="OCR Visualization Page {{ loop.index }}" style="width:100%; height:auto; border-radius:4px;" />
+                <div style="text-align:center; margin-top:.5rem; font-size:.9rem; color:var(--muted);">
+                  Page {{ loop.index }} - Click to view full size
+                </div>
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    <script>
+      const content = document.getElementById('content');
+      const copyBtn = document.getElementById('copyBtn');
+      const downloadBtn = document.getElementById('downloadBtn');
+      const charCount = document.getElementById('charCount');
+
+      charCount.textContent = (content.textContent.length).toLocaleString() + ' chars';
+
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(content.textContent);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => copyBtn.textContent = 'Copy', 1200);
+        } catch(e) {
+          alert('Copy failed: ' + e);
+        }
+      });
+
+      function updateDownload(){
+        const blob = new Blob([content.textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        downloadBtn.href = url;
+      }
+      updateDownload();
+
+      // Set direct download link for text content rendered on page
+      // This allows instant download without hitting the server
+      
+      // Populate hidden field with current text for Excel submission
+      const excelText = document.getElementById('excelText');
+      if (excelText) {
+        excelText.value = content.textContent;
+      }
+      
+    </script>
+  </body>
+  </html>

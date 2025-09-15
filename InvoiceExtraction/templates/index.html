@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Document & Image OCR</title>
+    <style>
+      :root { --border:#e5e7eb; --muted:#6b7280; --bg:#f9fafb; --primary:#111827; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; margin: 2rem; background: white; }
+      .card { max-width: 760px; margin: 0 auto; padding: 1.5rem; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+      h1 { margin-top: 0; font-size: 1.7rem; }
+      .note { color: var(--muted); font-size: .95rem; }
+      .flash { color: #b91c1c; margin: .5rem 0; }
+      .uploader { margin-top: 1rem; }
+      .drop { border: 2px dashed var(--border); background: var(--bg); border-radius: 10px; padding: 1.25rem; text-align: center; transition: border-color .15s, background .15s; }
+      .drop.dragover { border-color: #111827; background: #eef2ff; }
+      .drop small { color: var(--muted); display: block; margin-top: .25rem; }
+      .row { display: flex; gap: .75rem; align-items: center; margin-top: .75rem; }
+      input[type="file"] { flex: 1; }
+      button { background: var(--primary); color: white; border: none; padding: .7rem 1.1rem; border-radius: 8px; cursor: pointer; }
+      button[disabled] { opacity: .6; cursor: not-allowed; }
+      .foot { margin-top: .75rem; color: var(--muted); font-size: .85rem; }
+      .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.7); backdrop-filter: blur(2px); }
+      .spinner { width: 38px; height: 38px; border: 3px solid #e5e7eb; border-top-color: #111827; border-radius: 50%; animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .filename { margin-top: .5rem; color: var(--muted); font-size: .9rem; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Extract text from documents and images</h1>
+      <p class="note">Upload a PDF, PNG, JPEG, or other image file. The server will extract text using OCR.</p>
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          {% for msg in messages %}
+            <div class="flash">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form id="uploadForm" class="uploader" action="/ocr" method="post" enctype="multipart/form-data">
+        <div id="drop" class="drop">
+          <strong>Drag & drop</strong> your file here or click to browse
+          <small>Max 25 MB • PDF, PNG, JPEG, GIF, BMP, TIFF, WebP</small>
+          <input id="fileInput" type="file" name="pdf" accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.tif,.webp" style="display:none" required>
+        </div>
+        <div class="row" style="margin-top:1rem; align-items: flex-start;">
+          <label for="lang" class="note" style="min-width:140px; padding-top:.4rem;">OCR languages</label>
+          <div style="flex:1;">
+            <select id="lang" name="lang" multiple size="6" style="width:100%; padding:.5rem; border:1px solid var(--border); border-radius:8px;">
+              <option value="en" selected>English (en)</option>
+              <option value="ar">Arabic (ar)</option>
+              <option value="ch">Chinese (ch)</option>
+              <option value="fr">French (fr)</option>
+              <option value="de">German (de)</option>
+              <option value="es">Spanish (es)</option>
+              <option value="ja">Japanese (ja)</option>
+              <option value="ko">Korean (ko)</option>
+              <option value="ru">Russian (ru)</option>
+            </select>
+            <div class="note" style="margin-top:.25rem;">Tip: hold Ctrl (Cmd on Mac) to select multiple languages.</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:.75rem; align-items: center;">
+          <label style="min-width:140px; padding-top:.4rem;">
+            <input type="checkbox" name="use_gpu" checked style="margin-right:.5rem;">
+            <span class="note">Use GPU acceleration</span>
+          </label>
+        </div>
+        <div id="fileName" class="filename" aria-live="polite"></div>
+        <div class="row">
+          <button id="submitBtn" type="submit" disabled>Run OCR</button>
+          <button id="clearBtn" type="button" style="background:#6b7280">Clear</button>
+        </div>
+        <div class="foot">Tip: Bigger PDFs will take longer. Keep this tab open during processing.</div>
+      </form>
+    </div>
+
+    <div id="overlay" class="overlay" role="status" aria-live="assertive"><div class="spinner" aria-label="Processing"></div></div>
+
+    <script>
+      const drop = document.getElementById('drop');
+      const fileInput = document.getElementById('fileInput');
+      const fileName = document.getElementById('fileName');
+      const form = document.getElementById('uploadForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const overlay = document.getElementById('overlay');
+
+      function setFile(file){
+        if(!file) { fileName.textContent=''; submitBtn.disabled=true; return; }
+        
+        // Check if file type is allowed
+        const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/bmp', 'image/tiff', 'image/webp'];
+        const fileExtension = file.name.toLowerCase().split('.').pop();
+        const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', 'webp'];
+        
+        if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+          alert('Please choose a supported file type (PDF, PNG, JPEG, GIF, BMP, TIFF, or WebP).');
+          return;
+        }
+        
+        fileName.textContent = file.name + ' (' + (file.size/1024/1024).toFixed(2) + ' MB)';
+        submitBtn.disabled = false;
+      }
+
+      drop.addEventListener('click', () => fileInput.click());
+
+      drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragover'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+      drop.addEventListener('drop', (e) => {
+        e.preventDefault(); drop.classList.remove('dragover');
+        const file = e.dataTransfer.files && e.dataTransfer.files[0];
+        if(file){ fileInput.files = e.dataTransfer.files; setFile(file); }
+      });
+
+      fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+      clearBtn.addEventListener('click', () => {
+        fileInput.value = ''; setFile(null);
+      });
+
+      form.addEventListener('submit', () => {
+        overlay.style.display = 'flex';
+      });
+    </script>
+  </body>
+  </html>
+
+
