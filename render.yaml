@@ -1,0 +1,31 @@
+# render.yaml
+# This file tells Render how to build and deploy your project.
+
+services:
+  # This is your main web service.
+  - type: web
+    name: paddlocr-crosstab
+    env: docker
+    # Render will use your docker-compose.yml. Update the command if your service name differs.
+    dockerComposeCommand: docker-compose up --build -d invoice-extraction
+    envVars:
+      - fromGroup: app-secrets
+
+resources:
+  # This creates a free, managed PostgreSQL database for your app.
+  - type: postgres
+    name: my-database
+    plan: free
+
+envVarGroups:
+  # This group securely manages your secrets, like the database URL.
+  - name: app-secrets
+    envVars:
+      - key: DATABASE_URL
+        fromResource:
+          type: postgres
+          name: my-database
+          property: connectionString
+      # Add other secrets your app needs here
+      # - key: FLASK_SECRET_KEY
+      #   generateValue: true
