@@ -15,6 +15,14 @@
       pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); padding: 1rem; border-radius: 6px; max-height: 70vh; overflow: auto; }
       a.back { text-decoration: none; color: #111827; }
       .muted { color: var(--muted); font-size: .9rem; }
+      /* Responsive tweaks */
+      @media (max-width: 640px) {
+        body { margin: 1rem; }
+        .card { padding: 1rem; }
+        .toolbar { flex-wrap: wrap; gap: .5rem; }
+        .toolbar button, .toolbar a { width: 100%; text-align: center; }
+        pre { max-height: 50vh; }
+      }
     </style>
   </head>
   <body>

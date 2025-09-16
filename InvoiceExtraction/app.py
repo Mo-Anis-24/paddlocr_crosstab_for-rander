@@ -1,22 +1,23 @@
 import os
+import time
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash, jsonify
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flasgger import Swagger
 from werkzeug.utils import secure_filename
 import json
 import pandas as pd
 
-# ============================
-# Azure OpenAI Credentials
-# Load from .env file for security
-# ============================
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Get Azure credentials from environment variables
-AZURE_OPENAI_ENDPOINT_CFG = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_KEY_CFG = os.environ.get("AZURE_OPENAI_KEY", "")
-AZURE_DEPLOYMENT_NAME_CFG = os.environ.get("AZURE_DEPLOYMENT_NAME", "gpt-4o")
-# ============================
+# Import configuration and blueprints
+from config import get_config, ensure_directories
+from blueprints.api_v1 import api_bp
+from auth import auth_bp, init_jwt
 
 
 def convert_to_png(input_path: str, output_dir: str):
@@ -54,21 +55,134 @@ def convert_to_png(input_path: str, output_dir: str):
 	return []
 
 
+def process_ocr(file_path: str, lang: str = "en", use_gpu: bool = False):
+	"""Run OCR on the provided file and return a list of per-page raw text strings.
+	This function is framework-agnostic and safe to call from any context.
+	"""
+	# Convert input to PNG pages
+	output_dir = os.path.join(os.getcwd(), "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+	png_paths = convert_to_png(file_path, output_dir)
+	if not png_paths:
+		return []
+
+	# Run OCR
+	from paddleocr import PaddleOCR
+	ocr = PaddleOCR(lang=lang, use_gpu=use_gpu)
+	per_page_text: list[str] = []
+	for png in png_paths:
+		result = ocr.ocr(png)
+		if len(result) == 1 and isinstance(result[0], list):
+			flat = result[0]
+		else:
+			flat = result
+		page_lines = []
+		for res in flat:
+			try:
+				tc = res[1]
+				if isinstance(tc, (list, tuple)) and len(tc) >= 2:
+					page_lines.append(str(tc[0]))
+				else:
+					page_lines.append(str(tc))
+			except Exception:
+				pass
+		per_page_text.append("\n".join(page_lines))
+	return per_page_text
+
+
+def extract_structured_data(text_content: str) -> dict:
+	"""Call Azure OpenAI to extract structured invoice fields from raw text.
+	Returns a dictionary of extracted fields.
+	"""
+	api_key = (AZURE_OPENAI_KEY_CFG or "").strip()
+	endpoint = (AZURE_OPENAI_ENDPOINT_CFG or "").strip()
+	deployment = (AZURE_DEPLOYMENT_NAME_CFG or "").strip()
+	if not api_key or not endpoint or not deployment:
+		raise ValueError("Azure OpenAI credentials are not configured")
+	return call_azure_openai_extract(api_key, endpoint, deployment, text_content)
+
+
 def create_app() -> Flask:
-	# Load .env once at startup so you don't need to export vars in terminal
-	try:
-		load_dotenv()
-	except Exception:
-		pass
+	"""Create and configure Flask application."""
+	# Load environment variables
+	load_dotenv()
+	
+	# Get configuration
+	config_class = get_config()
+	
+	# Create Flask app
 	app = Flask(__name__)
-	app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
-	app.config["UPLOAD_FOLDER"] = os.path.join(os.getcwd(), "uploads")
-	app.config["OUTPUT_FOLDER"] = os.path.join(os.getcwd(), "outputs")
-	app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+	app.config.from_object(config_class)
+	
+	# Set start time for uptime calculation
+	app.start_time = time.time()
+	
+	# Ensure directories exist
+	ensure_directories(config_class)
 
-	os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-	os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
-
+	# Initialize extensions
+	CORS(app, resources={
+		r"/api/*": {"origins": config_class.CORS_ORIGINS.split(",") if config_class.CORS_ORIGINS else "*"}
+	})
+	
+	# Initialize JWT
+	init_jwt(app)
+	
+	# Initialize Rate Limiter
+	limiter = Limiter(
+		get_remote_address,
+		app=app,
+		storage_uri=config_class.RATELIMIT_STORAGE_URL
+	)
+	
+	# Initialize Swagger
+	swagger_config = {
+		"headers": [],
+		"specs": [
+			{
+				"endpoint": 'swagger',
+				"route": '/api/v1/swagger.json',
+				"rule_filter": lambda rule: True,
+				"model_filter": lambda tag: True,
+			}
+		],
+		"static_url_path": "/flasgger_static",
+		"swagger_ui": True,
+		"specs_route": config_class.SWAGGER_URL
+	}
+	
+	swagger_template = {
+		"swagger": "2.0",
+		"info": {
+			"title": config_class.APP_NAME,
+			"description": "REST API for Invoice OCR and Data Extraction",
+			"version": config_class.VERSION,
+			"contact": {
+				"name": "API Support",
+				"email": "support@example.com"
+			}
+		},
+		"host": "localhost:5000",
+		"basePath": "/api/v1",
+		"schemes": ["http", "https"],
+		"securityDefinitions": {
+			"Bearer": {
+				"type": "apiKey",
+				"name": "Authorization",
+				"in": "header",
+				"description": "JWT Authorization header using the Bearer scheme. Example: 'Authorization: Bearer {token}'"
+			}
+		},
+		"security": [{"Bearer": []}]
+	}
+	
+	Swagger(app, config=swagger_config, template=swagger_template)
+	
+	# Register blueprints
+	app.register_blueprint(auth_bp)
+	app.register_blueprint(api_bp)
+	
+	# Legacy web routes (for backward compatibility)
 	ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "bmp", "tiff", "tif"}
 
 	def is_allowed(filename: str) -> bool:
@@ -293,6 +407,52 @@ def create_app() -> Flask:
 		df.to_excel(excel_path, index=False)
 
 		return send_from_directory(app.config["OUTPUT_FOLDER"], excel_name, as_attachment=True)
+
+	# Secure REST API endpoint for extraction
+	@app.route("/api/v1/extract", methods=["POST"])
+	def api_extract():
+		# API Key Authentication
+		received_key = (request.headers.get("X-API-Key", "") or "").strip()
+		expected_key = (os.environ.get("API_SECRET_KEY", "") or "").strip()
+		if not expected_key or received_key != expected_key:
+			return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+		# Handle file upload
+		if "file" not in request.files:
+			return jsonify({"status": "error", "message": "No file provided"}), 400
+		up = request.files["file"]
+		if not up or not up.filename:
+			return jsonify({"status": "error", "message": "Invalid file"}), 400
+
+		# Optional parameters
+		lang = request.form.get("lang", "en")
+		use_gpu_flag = request.form.get("use_gpu", "false").lower() in {"1", "true", "yes", "on"}
+
+		try:
+			# Secure save
+			import uuid, time
+			base_name = os.path.splitext(up.filename or "upload")[0]
+			safe_base = secure_filename(base_name)
+			unique_suffix = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+			ext = os.path.splitext(up.filename or "")[1] or ""
+			filename = f"{safe_base}_{unique_suffix}{ext}"
+			upload_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+			up.save(upload_path)
+
+			# OCR processing
+			page_texts = process_ocr(upload_path, lang=lang, use_gpu=use_gpu_flag)
+			# Structured extraction per page
+			results = []
+			for t in page_texts:
+				try:
+					data = extract_structured_data(t)
+				except Exception as e:
+					data = {"error": str(e)}
+				results.append(data)
+
+			return jsonify({"status": "success", "data": results}), 200
+		except Exception as e:
+			return jsonify({"status": "error", "message": str(e)}), 500
 
 	return app
 

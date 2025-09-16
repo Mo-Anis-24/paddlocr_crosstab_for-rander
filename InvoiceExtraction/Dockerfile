@@ -5,6 +5,8 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV FLASK_ENV=production
+ENV PORT=5100
 
 # Set working directory
 WORKDIR /app
@@ -25,6 +27,18 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    libglib2.0-dev \
+    libgtk-3-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -32,29 +46,25 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install additional dependencies for PaddleOCR
-RUN pip install --no-cache-dir \
-    paddlepaddle==2.6.1 \
-    shapely==1.8.5.post1
-
 # Copy application code
 COPY . .
 
 # Create necessary directories
 RUN mkdir -p uploads outputs
 
-# Set permissions
-RUN chmod -R 755 /app
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
+USER app
 
 # Expose port
-EXPOSE 5000
+EXPOSE 5100
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/ || exit 1
+    CMD curl -f http://localhost:5100/api/health || exit 1
 
-# Run the application with a production WSGI server binding to 0.0.0.0
-# Use shell form to allow env var expansion for PORT provided by Render
-CMD gunicorn --bind 0.0.0.0:${PORT:-5000} app:app
+# Run the simple API
+CMD ["python", "simple_api.py"]
 
 
