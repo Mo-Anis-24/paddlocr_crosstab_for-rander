@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# Env
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Test/coverage
+.pytest_cache/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project generated data
+InvoiceExtraction/venv/
+InvoiceExtraction/uploads/
+InvoiceExtraction/outputs/
+outputs/
+uploads/
+
+# Logs
+*.log
