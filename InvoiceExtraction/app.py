@@ -67,8 +67,8 @@ def process_ocr(file_path: str, lang: str = "en", use_gpu: bool = False):
 		return []
 
 	# Run OCR
-	from paddleocr import PaddleOCR
-	ocr = PaddleOCR(lang=lang, use_gpu=use_gpu)
+	from ocr_utils import create_paddle_ocr
+	ocr = create_paddle_ocr(lang=lang, use_gpu=use_gpu)
 	per_page_text: list[str] = []
 	for png in png_paths:
 		result = ocr.ocr(png)
@@ -252,7 +252,7 @@ def create_app() -> Flask:
 			return redirect(url_for("index"))
 
 		# Run OCR using PaddleOCR
-		from paddleocr import PaddleOCR
+		from ocr_utils import create_paddle_ocr
 		from paddleocr import draw_ocr
 		import cv2
 		import numpy as np
@@ -280,7 +280,7 @@ def create_app() -> Flask:
 			# Fallback: return empty; draw_ocr will still try default but may fail
 			return ""
 
-		ocr = PaddleOCR(lang=lang, use_gpu=use_gpu)
+		ocr = create_paddle_ocr(lang=lang, use_gpu=use_gpu)
 		all_text_lines = []
 		annotated_previews = []
 		num_pages = 0

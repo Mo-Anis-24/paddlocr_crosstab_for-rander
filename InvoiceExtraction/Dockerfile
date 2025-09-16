@@ -55,10 +55,28 @@ RUN mkdir -p uploads outputs
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app && \
     chown -R app:app /app
-USER app
 
 # Expose port
 EXPOSE 5100
+
+# ADD THIS NEW BLOCK
+# Set the environment variable for the cache location
+ENV PADDLEOCR_HOME=/home/app/.paddleocr
+
+# Manually download, unpack the models, and set permissions (run as root)
+RUN export DET_URL='https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar' && \
+    export REC_URL='https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_rec_infer.tar' && \
+    export CLS_URL='https://paddleocr.bj.bcebos.com/PP-OCRv2/ch_ppocr_mobile_v2.0_cls_infer.tar' && \
+    mkdir -p "$PADDLEOCR_HOME/whl/det/en/en_PP-OCRv3_det_infer" && \
+    mkdir -p "$PADDLEOCR_HOME/whl/rec/en/en_PP-OCRv3_rec_infer" && \
+    mkdir -p "$PADDLEOCR_HOME/whl/cls/ch_ppocr_mobile_v2.0_cls_infer" && \
+    wget -O - ${DET_URL} | tar -C "$PADDLEOCR_HOME/whl/det/en/en_PP-OCRv3_det_infer" -x && \
+    wget -O - ${REC_URL} | tar -C "$PADDLEOCR_HOME/whl/rec/en/en_PP-OCRv3_rec_infer" -x && \
+    wget -O - ${CLS_URL} | tar -C "$PADDLEOCR_HOME/whl/cls/ch_ppocr_mobile_v2.0_cls_infer" -x && \
+    chown -R app:app /home/app
+
+# NOW, switch to the non-root user for the final command
+USER app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

@@ -38,9 +38,9 @@ def convert_to_png(input_path: str, output_dir: str) -> List[str]:
 
 def run_paddle_ocr(png_paths: List[str], lang: str = "en", use_gpu: bool = False) -> List[str]:
     """Run PaddleOCR for each PNG and return per-page text content."""
-    from paddleocr import PaddleOCR
+    from ocr_utils import create_paddle_ocr
 
-    ocr = PaddleOCR(lang=lang, use_gpu=use_gpu)
+    ocr = create_paddle_ocr(lang=lang, use_gpu=use_gpu)
     per_page_text: List[str] = []
     for png in png_paths:
         result = ocr.ocr(png)

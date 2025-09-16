@@ -1,3 +1,68 @@
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+
+# Virtual environments
+.venv/
+venv/
+InvoiceExtraction/venv/
+
+# Environment variables
+.env
+.env.*
+
+# Packaging/build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs
+*.log
+logs/
+celerybeat-schedule
+celerybeat.pid
+
+# Test and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor settings
+.vscode/
+*.code-workspace
+.idea/
+
+# Swap/backup files
+*.swp
+*.swo
+*~
+
+# Local runtime data (generated during app usage)
+uploads/
+InvoiceExtraction/uploads/
+outputs/
+InvoiceExtraction/outputs/
+
+# PaddleOCR temporary build outputs (if any)
+PaddleOCR/ppocr/ext_op/build/
+
+# Vendor sources (installed via pip instead)
+PaddleOCR/
+
 # Python
 __pycache__/
 *.pyc

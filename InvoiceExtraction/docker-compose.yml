@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   invoice-ocr-api:
     build:
@@ -10,9 +8,10 @@ services:
     restart: unless-stopped
     ports:
       - "5100:5100"
+    shm_size: '1gb'
     environment:
-      - FLASK_ENV=development
-      - FLASK_DEBUG=1
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
       - PORT=5100
       - PYTHONUNBUFFERED=1
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
@@ -31,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 4G
         reservations:
-          memory: 1G
+          memory: 2G
 
 
